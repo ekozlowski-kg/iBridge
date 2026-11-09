@@ -1,0 +1,44 @@
+EZD - iBridge 0.6.1 — paczka do testów wewnętrznych
+
+1. Porównaj SHA-256 ZIP z dołączonym plikiem .sha256.
+2. Rozpakuj ZIP. Zamknij wcześniejszy egzemplarz iBridge przed testem nowego.
+3. Przetestuj kopię aplikacji bez usuwania dotychczasowych danych.
+4. Dokumenty i historia nadal korzystają z dotychczasowego katalogu danych.
+
+Po uruchomieniu pojawia się małe okno statusu. Dokument otwarty z EZD
+uruchamia tylko edytor, a iBridge pracuje w pasku menu. Każdy stabilny zapis
+jest przesyłany w tle. Powiadomienia dotyczą problemów wymagających uwagi.
+
+Microsoft Word: zaakceptuj systemową prośbę o Automatyzację, jeśli chcesz
+wykrywać zamknięcie konkretnego dokumentu. Odmowa nie blokuje wysyłek.
+W innych edytorach lub przy braku dostępu po pracy wybierz z paska menu
+„Zakończ edycję: nazwa dokumentu”. Nie trzeba ręcznie wysyłać pliku.
+
+Sprawy: lista „Otwierane z EZD” grupuje wcześniejsze otwarcia tego samego
+dokumentu. Starsze kopie pozostają w historii i nie udają aktywnego połączenia.
+Pełna lista wszystkich dokumentów konta nie jest skonfigurowana: serwerowy
+EzdProxy.svc nie wystawia metody listowania konta. Potrzebna jest dokumentacja
+odrębnego API i uprawnienia administratora. Przycisk konta otwiera właściwe EZD
+w przeglądarce; nie prezentujemy lokalnej historii jako pełnej listy serwera.
+
+Restart: tokeny nie są zapisywane. Jeśli są niewysłane zmiany, ich lokalne
+kopie pozostają zachowane. Nowe połączenie rozpoczyna się przez otwarcie
+z EZD. W szczegółach i historii można wskazać potrzebną lokalną kopię.
+
+Aktualizacje: przy starcie i raz dziennie sprawdzane są stabilne wydania
+https://github.com/ekozlowski-kg/iBridge/releases
+Sprawdzanie jest też dostępne w ustawieniach. Brak wydań nie oznacza błędu.
+Ta wersja nie instaluje aktualizacji samodzielnie.
+
+Minimalny odbiór na rzeczywistym EZD, wyłącznie na dokumencie testowym:
+- otwórz dokument, wykonaj kilka zapisów i sprawdź treść w EZD;
+- zamknij tylko dokument w Wordzie, pozostawiając Word uruchomiony;
+- sprawdź potwierdzenie zakończenia sesji i brak dodatkowej wysyłki bez zmian;
+- sprawdź utratę i przywrócenie sieci oraz zachowanie pliku lokalnego;
+- otwórz dwa różne dokumenty i potwierdź niezależne sesje;
+- sprawdź komunikat przy wyjściu z niewysłanymi zmianami.
+
+Ważne ograniczenie wydania: podpis ad-hoc do testów wewnętrznych.
+Brak certyfikatu Apple Developer ID i notaryzacji. Nie jest to paczka do
+powszechnej dystrybucji. Moduł podpisu i jego Java/runtime pochodzą bez zmian
+z paczki 0.6.0; nie wykonano nowego podpisu osobistym certyfikatem.

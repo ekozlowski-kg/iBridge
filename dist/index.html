@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>EZD - iBridge</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <div id="root" aria-live="polite">
+      <div class="loading-screen">
+        <img src="./ibridge-puzzle.png" alt="" />
+        <span class="spinner" aria-hidden="true"></span>
+        <p>Uruchamianie EZD - iBridge…</p>
+      </div>
+    </div>
+  </body>
+</html>
