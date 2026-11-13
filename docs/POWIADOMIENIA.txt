@@ -1,0 +1,77 @@
+EZD — iBridge 0.6.2: powiadomienia (wersja testowa)
+
+URUCHOMIENIE
+1. Zakończ starsze iBridge z jego menu. Rozpakuj paczkę testową.
+2. Otwórz znajdującą się w niej aplikację „EZD - iBridge.app”.
+3. Ustawienia → Powiadomienia z EZD → Zaloguj do EZD.
+4. Zaloguj się w oknie należącym do iBridge. Wybierz właściwe konto/stanowisko.
+5. Włącz „Powiadomienia macOS o nowych pismach i zdarzeniach”.
+6. Poczekaj na komunikat „Sprawdzanie w tle aktywne” i sprawdź etykietę konta.
+7. Zamknij okno EZD oraz główne okno iBridge. Aplikacja pozostaje w pasku menu.
+8. W ustawieniach powiadomień macOS zezwól iBridge na wyświetlanie alertów.
+9. Opcjonalnie włącz istniejące „Uruchamiaj razem z systemem”.
+
+Nie trzeba uruchamiać Brave ani pozostawiać otwartej karty. iBridge musi być
+uruchomiony, komputer aktywny i połączony z siecią urzędu/VPN, a sesja EZD ważna.
+Uśpienie komputera wstrzymuje sprawdzanie; po wybudzeniu następuje odczyt.
+Po wygaśnięciu sesji zaloguj się ponownie w oknie iBridge. Sesja jest osobna
+od sesji używanej do edycji pojedynczego dokumentu i od sesji przeglądarki.
+
+JAK DZIAŁA
+- Cykl co 60 sekund; po błędzie sieci rosnące odstępy do 15 minut.
+- Brak nakładających się odczytów; limit czasu cyklu: 45 sekund.
+- Pierwszy kompletny odczyt jest cichy. Przerwa/ponowne uruchomienie zachowuje
+  poprzednią listę. Niepełny odczyt lub błąd nie zeruje stanu początkowego.
+- Wykrywa zmianę ID nawet przy niezmienionej liczbie pism; powrót koszulki do
+  folderu lub zmiana daty przekazania może wywołać kolejny alert.
+- Odczytuje wszystkie grupy folderu, niezależnie od paginacji i zwinięcia grup.
+- Konto operatora, konto zastępowane, jednostka i stanowisko są przypięte.
+  Zmiana wymaga „Użyj bieżącego konta”; tworzy to nowy, cichy stan początkowy.
+- Powiadomienia systemu EZD są odczytywane bez odrzucania/oznaczania ich jako
+  przeczytane. Konfigurację typów zdarzeń ustala konto w samym EZD.
+- Nowe pozycje folderu są wykrywane również przy wyłączonych subskrypcjach EZD.
+- Jedno podsumowanie macOS na cykl; nazwy pism i osób nie trafiają do alertu.
+- Kliknięcie otwiera EZD w iBridge. Brak automatycznego odbioru nowych pism.
+
+LOKALNE DANE
+Sesja znajduje się w partycji Electron „persist:ezd-inbox”, w katalogu danych
+aplikacji. Hasła nie są odczytywane przez kod modułu ani zapisywane w jego JSON.
+Plik ezd-inbox.json zawiera włączenie monitorowania, etykietę konta, klucze
+koszulek/zdarzeń i liczniki alertów oczekujących. Dostęp do pliku: właściciel.
+Nie są do niego zapisywane treści dokumentów, cookies ani tokeny edycji.
+Historia zdarzeń do deduplikacji ma limit 10 000 kluczy. Po awarii dokładnie
+między wyświetleniem alertu a zapisaniem potwierdzenia alert może się powtórzyć.
+
+ŹRÓDŁA KONTRAKTU — INSTALACJA 3.136.31.31, KG PSP
+GET /FolderPism.aspx?Status=1
+  lblUzytkownik, lblUzytkownikZastepstwo, lblDzial, lblStanowisko.
+POST /api/koszulki/grupyfolderu {IdStatus:"1"}
+  Rok, Miesiac, Dzien, Ilosc.
+POST /api/koszulki/koszulkigrupyfolderu {Id:"ROK_MIESIAC_DZIEN",Status:"1"}
+  id, nz, ns, nd, nddk, nrdk, dd, tr.
+POST /api/powiadomienia/pooluser {Display,System,Page}
+  Powiadomienia: Id, IdKoszulki, DataZdarzeniaShort, IdZdarzenia,
+  Zdarzenie, Uzytkownik, NazwaKoszulki.
+To ostatnie żądanie jest też używane przez stronę do przekazywania informacji
+o kliencie. Moduł identyfikuje się jako iBridge macOS. Nie korzysta z osobnego
+endpointu odrzucania powiadomień.
+Kontrakt wewnętrznego interfejsu może zmienić się po aktualizacji EZD.
+
+WERYFIKACJA
+Testy automatyczne: parsowanie konta, rozdzielenie zastępstw, odczyt grup,
+niepełne dane, zmiana konta w trakcie odczytu, utrata sesji, deduplikacja,
+restart, automatyczny timer, zatrzymanie oraz ponawianie niedostarczonego alertu.
+Parser konta sprawdzono również na lokalnej kopii rzeczywistego HTML strony.
+
+Odbiór po zalogowaniu do rzeczywistego EZD pozostaje NIEPOTWIERDZONY:
+1. Zalogowanie w oknie iBridge; czytelny komunikat o koncie i ostatnim odczycie.
+2. Nowe pismo testowe → alert, również przy zamkniętym Brave i oknach iBridge.
+3. Brak powtórnego alertu po kolejnych cyklach i po restarcie.
+4. Nowa wersja dokumentu objętego subskrypcją → alert o zdarzeniu.
+5. Brak samoczynnego odebrania pisma i odrzucenia powiadomień na serwerze.
+6. Wylogowanie/utrata VPN/wybudzenie → prawidłowy stan i powrót działania.
+7. Zmiana zastępstwa → blokada do jawnego potwierdzenia nowego konta.
+
+Paczka jest podpisana ad-hoc do lokalnych testów. Nie ma notaryzacji Apple.
+Nie zastępuje automatycznie zainstalowanego egzemplarza ani nie publikuje wydania.
+Runtime Electron i moduł podpisu pochodzą z lokalnie zainstalowanego iBridge 0.6.1.

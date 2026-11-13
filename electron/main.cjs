@@ -3,6 +3,7 @@ const { pathToFileURL } = require('node:url')
 const { spawn } = require('node:child_process')
 const {
   app,
+  autoUpdater,
   BrowserWindow,
   dialog,
   ipcMain,
@@ -12,7 +13,12 @@ const {
   nativeTheme,
   shell,
   Tray,
+  session,
+  powerMonitor,
 } = require('electron')
+const { EzdInboxClient } = require('./ezd-inbox-client.cjs')
+const { EzdInboxMonitor } = require('./ezd-inbox-monitor.cjs')
+const { createInboxWindowController } = require('./ezd-inbox-window.cjs')
 const { SessionStore } = require('./session-store.cjs')
 const { EzdSessionCoordinator } = require('./ezd-session-coordinator.cjs')
 const {
@@ -22,7 +28,7 @@ const {
 } = require('./ezd-signature-coordinator.cjs')
 const { SignatureHelper } = require('./signature-helper.cjs')
 const { DocumentObserver } = require('./document-observer.cjs')
-const { UpdateChecker, REPOSITORY_URL } = require('./update-checker.cjs')
+const { AutomaticUpdater, updateSupport } = require('./automatic-updater.cjs')
 const { pendingWork } = require('./quit-policy.cjs')
 const { EzdSoapClient } = require('./ezd-soap-client.cjs')
 const { EzdAutosync } = require('./ezd-autosync.cjs')
@@ -62,6 +68,9 @@ let expandedWindow = false
 const notifiedProblems = new Set()
 let diagnosticLog = null
 let trayController = null
+let inboxMonitor = null
+let inboxWindow = null
+let lastInboxProblem = null
 let applicationInitialized = false
 let queuedProtocolUrl = findProtocolArgument(process.argv)
 const queuedProtocolUrls = queuedProtocolUrl ? [queuedProtocolUrl] : []
@@ -314,6 +323,15 @@ async function handleProtocolUrl(rawUrl) {
 }
 
 function registerIpc() {
+  for (const [channel, handler] of [
+    ['inbox:get', () => inboxMonitor.snapshot()],
+    ['inbox:enabled', enabled => inboxMonitor.setEnabled(enabled)],
+    ['inbox:check', () => inboxMonitor.check()],
+    ['inbox:rebind', () => inboxMonitor.rebind()],
+    ['inbox:login', () => { inboxWindow.open(); return { ok: true } }],
+  ]) {
+    ipcMain.handle(channel, (event, ...args) => { assertTrustedSender(event); return handler(...args) })
+  }
   ipcMain.handle('window:mode', (event, mode) => {
     assertTrustedSender(event)
     if (!['compact', 'details'].includes(mode)) throw new Error('Nieprawidłowy tryb okna.')
@@ -322,13 +340,14 @@ function registerIpc() {
   })
   ipcMain.handle('updates:get', event => { assertTrustedSender(event); return updateChecker.snapshot() })
   ipcMain.handle('updates:check', event => { assertTrustedSender(event); return updateChecker.check(true) })
-  ipcMain.handle('updates:open', event => {
+  ipcMain.handle('updates:restart', event => {
     assertTrustedSender(event)
-    return shell.openExternal(updateChecker.snapshot().url || `${REPOSITORY_URL}/releases`)
+    return updateChecker.requestRestart()
   })
   ipcMain.handle('account:open', event => {
     assertTrustedSender(event)
-    return shell.openExternal('https://ezd.kg.straz.gov.pl/')
+    inboxWindow.open()
+    return { ok: true }
   })
   ipcMain.handle('state:get', (event) => {
     assertTrustedSender(event)
@@ -615,8 +634,52 @@ app.whenReady().then(async () => {
     },
     onClosed: ({ sessionId }) => finishEditing(sessionId),
   })
-  updateChecker = new UpdateChecker({ currentVersion: app.getVersion(), directory: dataDirectory,
-    onChange: state => sendToRenderer('updates-changed', state) })
+  updateChecker = new AutomaticUpdater({
+    nativeUpdater: autoUpdater,
+    currentVersion: app.getVersion(),
+    support: await updateSupport({ isPackaged: app.isPackaged,
+      configPath: path.join(__dirname, '..', 'auto-update.json') }),
+    onChange: state => sendToRenderer('updates-changed', state),
+    canRestart: async () => {
+      if (quitRequested || quitDialogOpen || queuedProtocolUrls.length
+          || ezdSignatures?.activeRequestId || ezdSessions?.reservations?.size) return false
+      const pending = await pendingWork(store, ezdSessions)
+      return !pending.length && !ezdSignatures?.activeRequestId
+        && !ezdSessions?.reservations?.size && !quitRequested && !queuedProtocolUrls.length
+    },
+    requestQuit: () => app.quit(),
+  })
+  inboxWindow = createInboxWindowController({ BrowserWindow, session,
+    onLoaded: () => inboxMonitor?.check() })
+  inboxMonitor = new EzdInboxMonitor({
+    client: new EzdInboxClient({ fetchImpl: inboxWindow.session.fetch.bind(inboxWindow.session) }),
+    directory: dataDirectory,
+    notify: async ({ count, eventCount = 0 }) => {
+      if (!Notification.isSupported()) throw new Error('Powiadomienia systemowe niedostępne.')
+      const notification = new Notification({ title: APPLICATION_NAME,
+        body: `${count ? `Nowe pisma w EZD: ${count}. ` : ''}${eventCount ? `Inne powiadomienia EZD: ${eventCount}. ` : ''}Kliknij, aby otworzyć EZD w iBridge.`, silent: false })
+      notification.on('click', () => inboxWindow.open())
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Nie potwierdzono wyświetlenia powiadomienia.')), 10_000)
+        notification.once('show', () => { clearTimeout(timeout); resolve() })
+        notification.once('failed', () => { clearTimeout(timeout); reject(new Error('System nie wyświetlił powiadomienia.')) })
+        notification.show()
+      })
+    },
+    onChange: state => {
+      sendToRenderer('inbox-changed', state)
+      trayController?.updateInbox(state)
+      if (['ready', 'disabled'].includes(state.status)) lastInboxProblem = null
+      if (state.enabled && ['login-required', 'account-changed', 'storage-error'].includes(state.status)
+        && state.status !== lastInboxProblem && Notification.isSupported()) {
+        lastInboxProblem = state.status
+        const notification = new Notification({ title: APPLICATION_NAME, body: state.message })
+        notification.on('click', () => showMainWindow().catch(() => {}))
+        notification.show()
+      }
+    },
+  })
+  powerMonitor.on('resume', () => inboxMonitor?.check())
   trayController = createTrayController({
     Tray,
     Menu,
@@ -624,12 +687,15 @@ app.whenReady().then(async () => {
     iconPath: path.join(__dirname, '..', 'dist', 'ibridge-trayTemplate.png'),
     applicationName: APPLICATION_NAME,
     onOpen: () => showMainWindow().catch(() => {}),
+    onOpenInbox: () => inboxWindow.open(),
     onQuit: () => {
       app.quit()
     },
     onFinish: sessionId => finishEditing(sessionId).catch(error => notifyProblem(sessionId, 'finish', error.message)),
   })
   trayController.updateState(store.snapshot())
+  // Initialization performs network work only if the user previously enabled monitoring.
+  await inboxMonitor.init()
   registerIpc()
   if (process.env.EZD_SKIP_UPDATE_CHECK !== '1') updateChecker.start().catch(() => {})
   applicationInitialized = true
@@ -668,6 +734,11 @@ app.on('before-quit', (event) => {
     quitDialogOpen = true
     ;(async () => {
       const pending = store ? await pendingWork(store, ezdSessions) : []
+      if (updateChecker?.restartRequested && (pending.length || ezdSignatures?.activeRequestId
+          || ezdSessions?.reservations?.size || queuedProtocolUrls.length)) {
+        updateChecker.cancelRestart()
+        return
+      }
       if (pending.length && !forcedExit) {
         const answer = await dialog.showMessageBox(mainWindow, { type: 'warning', title: APPLICATION_NAME,
           message: 'Pozostały niewysłane zmiany lub niezakończone sesje EZD.',
@@ -680,6 +751,8 @@ app.on('before-quit', (event) => {
       quitRequested = true
       documentObserver?.close()
       updateChecker?.close()
+      await inboxMonitor?.close()
+      inboxWindow?.close()
       // Do not silently finish a session while its document is still open.
       await ezdSignatures?.releaseAll()
       let timeout
@@ -699,10 +772,11 @@ app.on('before-quit', (event) => {
       trayController = null
       nativeTheme.removeListener('updated', handleNativeThemeUpdated)
       quitCleanupFinished = true
-      app.quit()
+      if (!updateChecker?.installAfterCleanup()) app.quit()
     })().catch(error => {
       quitCleanupStarted = false
       quitRequested = false
+      updateChecker?.cancelRestart()
       notifyProblem('application', 'quit', 'Nie udało się bezpiecznie zapisać stanu. Aplikacja pozostaje uruchomiona.')
     }).finally(() => { quitDialogOpen = false })
     return

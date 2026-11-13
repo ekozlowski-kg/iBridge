@@ -1,19 +1,20 @@
 {
   "name": "ezd-ibridge",
   "productName": "EZD - iBridge",
-  "version": "0.6.1",
-  "description": "EZD - iBridge do edycji, synchronizacji i wersjonowania dokumentów na macOS.",
+  "version": "0.6.3",
+  "description": "EZD - iBridge do edycji, synchronizacji i wersjonowania dokument\u00f3w na macOS.",
   "homepage": "https://www.gov.pl/web/uw-podlaski",
   "desktopName": "pl.kckr.ezd-integracja",
   "main": "electron/main.cjs",
-  "author": "Emil Kozłowski (KCKR)",
+  "author": "Emil Koz\u0142owski (KCKR)",
   "license": "UNLICENSED",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.cjs test/*.test.mjs",
     "start": "electron .",
-    "package": "python3 scripts/package.py"
+    "package": "python3 scripts/package.py",
+    "release:mac": "node scripts/release-mac.cjs"
   },
   "dependencies": {
     "@xmldom/xmldom": "0.8.13",
@@ -27,6 +28,7 @@
     "url": "https://github.com/ekozlowski-kg/iBridge.git"
   },
   "devDependencies": {
+    "@electron/osx-sign": "2.7.2",
     "electron": "43.3.0"
   }
 }
