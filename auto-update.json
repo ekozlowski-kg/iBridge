@@ -1,0 +1,4 @@
+{
+  "enabled": false,
+  "reason": "Release packaging enables updates only after Developer ID signing and notarization."
+}

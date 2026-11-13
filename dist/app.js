@@ -228,8 +228,11 @@ function renderCasesPage() {
 
 function renderUpdateSettings() {
   const u = model.updates
-  const labels = { 'not-checked': 'Nie sprawdzono', checking: 'Sprawdzanie…', current: 'Masz aktualną wersję', available: `Dostępna wersja ${u.latestVersion || ''}`, 'no-releases': 'Brak opublikowanych wydań stabilnych', unavailable: 'Nie można teraz sprawdzić wersji. Spróbuj później.' }
-  return `<section class="settings-section"><div class="settings-title">${icon('info')}<div><h2>Aktualizacje</h2><p>Wersja ${APPLICATION_VERSION} · sprawdzanie przy starcie i raz dziennie.</p></div></div><div class="settings-controls"><p role="status">${escapeHtml(labels[u.status] || labels['not-checked'])}</p><div class="header-actions"><button type="button" class="button compact" data-action="check-updates" ${u.status === 'checking' ? 'disabled' : ''}>Sprawdź aktualizacje</button>${u.status === 'available' ? '<button type="button" class="button primary compact" data-action="open-release">Pobierz wydanie</button>' : ''}</div></div></section>`
+  const labels = { 'not-checked': 'Nie sprawdzono', checking: 'Sprawdzanie…', current: 'Masz aktualną wersję', downloading: 'Pobieranie aktualizacji w tle…', ready: 'Aktualizacja pobrana. Zainstaluje się automatycznie po zakończeniu aplikacji.', 'waiting-for-documents': 'Aktualizacja czeka. Najpierw zakończ edycję i podpisywanie dokumentów.', restarting: 'Zapisywanie stanu i ponowne uruchamianie…', 'setup-required': 'Ta kopia wymaga jednorazowej instalacji podpisanego wydania z automatycznymi aktualizacjami.', unavailable: 'Nie można teraz pobrać informacji lub aktualizacji. Spróbujemy ponownie w tle.' }
+  const busy = ['checking', 'downloading', 'restarting'].includes(u.status)
+  const restart = ['ready', 'waiting-for-documents'].includes(u.status)
+  const description = u.automatic ? 'Pobieranie w tle. Instalacja automatycznie po zakończeniu aplikacji.' : 'Automatyczne aktualizacje nie są jeszcze aktywne w tej kopii.'
+  return `<section class="settings-section"><div class="settings-title">${icon('info')}<div><h2>Aktualizacje</h2><p>Wersja ${APPLICATION_VERSION} · ${description}</p></div></div><div class="settings-controls"><p role="status">${escapeHtml(labels[u.status] || labels['not-checked'])}</p><div class="header-actions"><button type="button" class="button compact" data-action="check-updates" ${busy || !u.automatic ? 'disabled' : ''}>Sprawdź aktualizacje</button>${restart ? '<button type="button" class="button primary compact" data-action="restart-for-update">Zainstaluj i uruchom ponownie</button>' : ''}</div></div></section>`
 }
 
 function renderShell() {
@@ -971,7 +974,7 @@ root.addEventListener('click', async (event) => {
   }
   if (action === 'open-account') { await api.openEzdAccount(); return }
   if (action === 'check-updates') { model.updates = await api.checkUpdates(); render(); return }
-  if (action === 'open-release') { await api.openRelease(); return }
+  if (action === 'restart-for-update') { model.updates = await api.restartForUpdate(); render(); return }
   if (action === 'navigate') {
     model.view = control.dataset.view
     await api.setWindowMode(model.view === 'home' ? 'compact' : 'details')

@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('mostEzd', {
   setWindowMode: mode => ipcRenderer.invoke('window:mode', mode),
   getUpdates: () => ipcRenderer.invoke('updates:get'),
   checkUpdates: () => ipcRenderer.invoke('updates:check'),
-  openRelease: () => ipcRenderer.invoke('updates:open'),
+  restartForUpdate: () => ipcRenderer.invoke('updates:restart'),
   openEzdAccount: () => ipcRenderer.invoke('account:open'),
   onUpdatesChanged: callback => subscribe('updates-changed', callback),
   chooseDocument: () => ipcRenderer.invoke('document:choose'),

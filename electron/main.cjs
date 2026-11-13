@@ -3,6 +3,7 @@ const { pathToFileURL } = require('node:url')
 const { spawn } = require('node:child_process')
 const {
   app,
+  autoUpdater,
   BrowserWindow,
   dialog,
   ipcMain,
@@ -27,7 +28,7 @@ const {
 } = require('./ezd-signature-coordinator.cjs')
 const { SignatureHelper } = require('./signature-helper.cjs')
 const { DocumentObserver } = require('./document-observer.cjs')
-const { UpdateChecker, REPOSITORY_URL } = require('./update-checker.cjs')
+const { AutomaticUpdater, updateSupport } = require('./automatic-updater.cjs')
 const { pendingWork } = require('./quit-policy.cjs')
 const { EzdSoapClient } = require('./ezd-soap-client.cjs')
 const { EzdAutosync } = require('./ezd-autosync.cjs')
@@ -339,9 +340,9 @@ function registerIpc() {
   })
   ipcMain.handle('updates:get', event => { assertTrustedSender(event); return updateChecker.snapshot() })
   ipcMain.handle('updates:check', event => { assertTrustedSender(event); return updateChecker.check(true) })
-  ipcMain.handle('updates:open', event => {
+  ipcMain.handle('updates:restart', event => {
     assertTrustedSender(event)
-    return shell.openExternal(updateChecker.snapshot().url || `${REPOSITORY_URL}/releases`)
+    return updateChecker.requestRestart()
   })
   ipcMain.handle('account:open', event => {
     assertTrustedSender(event)
@@ -633,8 +634,21 @@ app.whenReady().then(async () => {
     },
     onClosed: ({ sessionId }) => finishEditing(sessionId),
   })
-  updateChecker = new UpdateChecker({ currentVersion: app.getVersion(), directory: dataDirectory,
-    onChange: state => sendToRenderer('updates-changed', state) })
+  updateChecker = new AutomaticUpdater({
+    nativeUpdater: autoUpdater,
+    currentVersion: app.getVersion(),
+    support: await updateSupport({ isPackaged: app.isPackaged,
+      configPath: path.join(__dirname, '..', 'auto-update.json') }),
+    onChange: state => sendToRenderer('updates-changed', state),
+    canRestart: async () => {
+      if (quitRequested || quitDialogOpen || queuedProtocolUrls.length
+          || ezdSignatures?.activeRequestId || ezdSessions?.reservations?.size) return false
+      const pending = await pendingWork(store, ezdSessions)
+      return !pending.length && !ezdSignatures?.activeRequestId
+        && !ezdSessions?.reservations?.size && !quitRequested && !queuedProtocolUrls.length
+    },
+    requestQuit: () => app.quit(),
+  })
   inboxWindow = createInboxWindowController({ BrowserWindow, session,
     onLoaded: () => inboxMonitor?.check() })
   inboxMonitor = new EzdInboxMonitor({
@@ -720,6 +734,11 @@ app.on('before-quit', (event) => {
     quitDialogOpen = true
     ;(async () => {
       const pending = store ? await pendingWork(store, ezdSessions) : []
+      if (updateChecker?.restartRequested && (pending.length || ezdSignatures?.activeRequestId
+          || ezdSessions?.reservations?.size || queuedProtocolUrls.length)) {
+        updateChecker.cancelRestart()
+        return
+      }
       if (pending.length && !forcedExit) {
         const answer = await dialog.showMessageBox(mainWindow, { type: 'warning', title: APPLICATION_NAME,
           message: 'Pozostały niewysłane zmiany lub niezakończone sesje EZD.',
@@ -753,10 +772,11 @@ app.on('before-quit', (event) => {
       trayController = null
       nativeTheme.removeListener('updated', handleNativeThemeUpdated)
       quitCleanupFinished = true
-      app.quit()
+      if (!updateChecker?.installAfterCleanup()) app.quit()
     })().catch(error => {
       quitCleanupStarted = false
       quitRequested = false
+      updateChecker?.cancelRestart()
       notifyProblem('application', 'quit', 'Nie udało się bezpiecznie zapisać stanu. Aplikacja pozostaje uruchomiona.')
     }).finally(() => { quitDialogOpen = false })
     return

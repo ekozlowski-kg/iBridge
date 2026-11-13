@@ -1,4 +1,19 @@
-# EZD – iBridge 0.6.2 — wersja testowa
+# EZD – iBridge 0.6.3
+
+## Automatyczne aktualizacje
+
+Podpisane wydanie produkcyjne sprawdza aktualizacje przy starcie i raz dziennie,
+pobiera je w tle i instaluje automatycznie przy rzeczywistym zakończeniu aplikacji.
+Zamknięcie samego okna nadal pozostawia iBridge w pasku menu. Nie trzeba otwierać
+GitHuba, pobierać ZIP-a ani ręcznie wymieniać aplikacji. Opcjonalny przycisk
+„Zainstaluj i uruchom ponownie” czeka na zakończenie sesji edycji i podpisywania;
+przed restartem korzysta z istniejącego zapisu stanu i opróżniania kolejki.
+
+**Obecna kopia ad hoc wymaga jednorazowej wymiany na pierwsze wydanie podpisane
+Developer ID Application.** Kopie testowe nie udają aktywnego autoaktualizatora.
+Budowanie wersji produkcyjnej wymaga certyfikatu Apple i profilu notaryzacji.
+Skrypt generuje pliki aktualizacji dopiero po podpisaniu i notaryzacji; nie
+publikuje ich samodzielnie. Instrukcja: [docs/AUTO-AKTUALIZACJE.md](docs/AUTO-AKTUALIZACJE.md).
 
 ## Powiadomienia w samym iBridge
 
@@ -60,10 +75,10 @@ dokumentu testowego; nie jest zastąpiona testami jednostkowymi.
 
 ## Paczka macOS Apple Silicon
 
-Testową paczkę 0.6.2 można przygotować z lokalnie zainstalowanego iBridge 0.6.1:
+Testową paczkę bez aktywnych autoaktualizacji można przygotować z lokalnego runtime:
 
 ```sh
-python3 scripts/package-local-inbox.py \
+node scripts/release-mac.cjs --test-build \
   --runtime '/Applications/EZD - iBridge.app' \
   --output ./artifacts
 ```
@@ -89,13 +104,16 @@ oraz Helperów, dodaje opis Automatyzacji, podpisuje ad-hoc i wykonuje
 `codesign --verify --deep --strict`. Dołącza instrukcję testów i manifest SHA-256
 źródeł oraz niezmienionego modułu podpisu.
 
-Moduł Java/PKCS#11 i jego runtime pozostają binarnie niezmienione z 0.6.0.
+Moduł Java/PKCS#11 pochodzi z dostarczonego runtime; JAR pozostaje niezmieniony.
 Dostarczony materiał nie zawiera ich źródeł Java; repozytorium nie deklaruje
-pełnej przebudowy tego modułu. Zmiany 0.6.2 dodają monitorowanie folderu i powiadomień.
+pełnej przebudowy tego modułu. Produkcyjne podpisanie aktualizuje podpisy kodu
+natywnego, w tym runtime Java; wymaga ponownego odbioru modułu PKCS#11.
+Zmiany 0.6.2 dodają monitorowanie folderu i powiadomień.
 
 **Wydanie testowe nie ma Apple Developer ID ani notaryzacji.** Gotowe binaria
-nie są publikowane automatycznie przez CI. Nie ma automatycznej instalacji
-aktualizacji. Publiczne repozytorium zawiera kod, testy i skrypt pakowania;
+nie są publikowane automatycznie przez CI. Autoaktualizacje są dostępne dopiero
+w produkcyjnym wydaniu z poprawnym podpisem i kanałem GitHub Releases.
+Publiczne repozytorium zawiera kod, testy i skrypt pakowania;
 nie zawiera dokumentów, logów, stanu użytkownika, PIN-ów, tokenów ani runtime.
 
 Instrukcja akceptacji: [docs/TESTY-WEWNETRZNE.txt](docs/TESTY-WEWNETRZNE.txt).
