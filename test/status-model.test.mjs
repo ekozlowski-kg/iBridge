@@ -20,9 +20,12 @@ test('expired sessions and modified historical copies never claim active synchro
   assert.equal(connectionLabel(s),'Brak aktywnej sesji')
   s.remote.recoveryRequired=false;assert.equal(compactStatus(s).tone,'idle')
 })
-test('confirmed upload with failed close is shown as a close problem, not a rejected upload', () => {
-  const s = {remote:{connectionStatus:'active',syncStatus:'synced',finishStatus:'error'}}
+test('confirmed upload remains a success when only server cleanup fails', () => {
+  const s = {remote:{connectionStatus:'needs-reopen',syncStatus:'synced',finishStatus:'error',lastUploadAt:'2026-01-01'}}
   const view=compactStatus(s)
-  assert.equal(view.title,'Sesja nie została zamknięta')
-  assert.match(view.text,/Plik jest zapisany w EZD/)
+  assert.equal(view.title,'Zapisano w EZD')
+  assert.equal(view.tone,'success')
+  assert.doesNotMatch(view.text,/Sesja.*zakończona/)
+  s.remote.recoveryRequired = true
+  assert.equal(compactStatus(s).tone,'error')
 })

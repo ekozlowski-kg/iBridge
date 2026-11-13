@@ -76,6 +76,7 @@ def main():
             shutil.rmtree(source_target / directory)
             shutil.copytree(ROOT / directory, source_target / directory)
         shutil.copyfile(ROOT / 'package.json', source_target / 'package.json')
+        run('python3', ROOT / 'scripts/build-notification-permissions.py', '--output', source_target / 'electron/native/notification-permissions.node')
         for plist_path in app.rglob('*.app/Contents/Info.plist'):
             contents = plistlib.loads(plist_path.read_bytes())
             contents['CFBundleShortVersionString'] = version
@@ -98,6 +99,7 @@ def main():
         files = [p for p in (ROOT/'electron').glob('*.cjs')] + [p for p in (ROOT/'dist').glob('*') if p.is_file()]
         manifest = {'version': version, 'baselineSha256': actual, 'signing': 'ad-hoc; not Apple Developer ID; not notarized',
             'sourceRepository': 'https://github.com/ekozlowski-kg/iBridge',
+            'notificationBridgeSha256': hashlib.sha256((source_target/'electron/native/notification-permissions.node').read_bytes()).hexdigest(),
             'files': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(files)},
             'unchangedSignerSha256': hashlib.sha256((source_target/'signer/ibridge-signer.jar').read_bytes()).hexdigest()}
         (stage/'BUILD-INFO.json').write_text(json.dumps(manifest, indent=2)+'\n')

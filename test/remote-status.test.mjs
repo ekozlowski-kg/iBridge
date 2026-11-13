@@ -46,3 +46,10 @@ test('maps pending, syncing, idle, and sent states to concise Polish copy', () =
   assert.equal(remoteStatusView({ status: 'editing', syncStatus: 'syncing' }).title, 'Synchronizacja…')
   assert.equal(remoteStatusView({ status: 'sent' }).title, 'Edycja zakończona w EZD')
 })
+
+test('cleanup failure preserves confirmed save presentation without claiming server closure', () => {
+  const remote = { syncStatus: 'synced', finishStatus: 'error', connectionStatus: 'needs-reopen' }
+  assert.equal(remoteStatusView(remote).title, 'Zapisano w EZD')
+  assert.equal(remoteStatusView({ ...remote, recoveryRequired: true }).className, 'error')
+  assert.equal(remoteStatusView({ ...remote, syncStatus: 'error', connectionStatus: 'active' }).title, 'Błąd synchronizacji')
+})

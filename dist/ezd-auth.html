@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Logowanie domenowe EZD</title>
+<style>body{font:14px -apple-system,BlinkMacSystemFont,sans-serif;margin:26px;background:#f6f7f9;color:#202124}h1{font-size:21px;margin:0 0 8px}p{line-height:1.4;color:#50545b}label{display:block;margin-top:14px}input{box-sizing:border-box;width:100%;padding:9px;border:1px solid #bcc3cd;border-radius:7px;margin-top:5px;font:inherit}footer{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}button{padding:9px 15px;border-radius:7px;border:1px solid #bcc3cd;font:inherit;cursor:pointer}button[type=submit]{background:#1967d2;color:white;border-color:#1967d2}#error{color:#a40000;min-height:18px}</style>
+</head><body><h1>Logowanie do EZD</h1><p>Serwer: <strong>ezd.kg.straz.gov.pl</strong><br>Podaj dane konta domenowego. Hasło nie zostanie zapisane w ustawieniach iBridge.</p>
+<form id="auth"><label>Login domenowy<input id="username" autocomplete="username" placeholder="DOMENA\login" autofocus required></label><label>Hasło<input id="password" type="password" autocomplete="current-password" required></label><div id="error" role="alert"></div><footer><button type="button" id="cancel">Anuluj</button><button type="submit">Zaloguj</button></footer></form><script src="./ezd-auth.js"></script></body></html>

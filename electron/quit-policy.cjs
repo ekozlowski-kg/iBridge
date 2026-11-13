@@ -11,8 +11,10 @@ async function pendingWork(store, coordinator) {
       const bytes = await fs.readFile(session.workingPath)
       if (baseline) unsent ||= crypto.createHash('sha256').update(bytes).digest('hex') !== baseline
     } catch { unsent ||= Boolean(session.dirty) }
-    if (unsent || coordinator?.hasLiveSession(session.id)
-        || ['error','finishing','unconfirmed'].includes(remote.finishStatus)) pending.push(session)
+    // A missing server cleanup ACK is not an unsent document. Warn only about
+    // actual local changes or an editor that may still produce another save.
+    const editing = coordinator?.hasLiveSession(session.id) && remote.editorState !== 'closed'
+    if (unsent || editing) pending.push(session)
   }
   return pending
 }

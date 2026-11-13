@@ -97,7 +97,7 @@ test('close during upload drains latest save and retries finish without reupload
   await started
   const finishing=sync.finish(s.id).catch(()=>{})
   await fs.writeFile(s.workingPath,'final');release();await finishing
-  await wait(()=>store.getSession(s.id).remote.status==='sent')
+  await wait(()=>store.getSession(s.id).remote.status==='sent' && !c.hasLiveSession(s.id))
   assert.deepEqual(uploaded,['first','final']);assert.equal(finishCalls,2);assert.equal(c.hasLiveSession(s.id),false)
 })
 
@@ -118,6 +118,39 @@ test('Word path is an argv value, never executable script text',async()=>{
   const pathname='/tmp/a" & do shell script.docx'
   const result=await probeWord(pathname,{execFileImpl:(command,args,options,cb)=>{assert.equal(command,'/usr/bin/osascript');assert.equal(args.at(-1),pathname);assert(!args[1].includes(pathname));cb(null,'OPEN\n')}})
   assert.equal(result,'open')
+})
+
+test('a transient Word probe failure recovers automatically and finishes after close', async t => {
+  let observation = 'unknown'
+  let closed = 0
+  const observer = new DocumentObserver({ platform: 'darwin', intervalMs: 5,
+    probe: async () => observation, onClosed: async () => { closed++ } })
+  t.after(() => observer.close())
+  const entry = await observer.watch('probe-recovery', '/tmp/probe-recovery.docx')
+  await wait(() => entry.state === 'unknown')
+  observation = 'open'
+  await wait(() => entry.state === 'open')
+  observation = 'unknown'
+  await wait(() => entry.state === 'unknown')
+  assert.equal(closed, 0)
+  observation = 'absent'
+  await wait(() => closed === 1)
+  await sleep(25)
+  assert.equal(closed, 1)
+})
+
+test('a saved closed document with a missing cleanup ACK does not block quit, but unsent changes do', async t => {
+  const { store } = await fixture(t)
+  const { sessionId, workingPath } = await store.importRemoteDocument({ fileName: 'saved.txt', data: Buffer.from('saved') })
+  await store.markRemoteSynced(sessionId, { hash: hash('saved') })
+  await store.patchRemote(sessionId, { finishStatus: 'error', editorState: 'closed' })
+  const live = { hasLiveSession: () => true }
+  assert.deepEqual(await pendingWork(store, live), [])
+  await fs.writeFile(workingPath, 'another save')
+  assert.equal((await pendingWork(store, live)).length, 1)
+  await fs.writeFile(workingPath, 'saved')
+  await store.patchRemote(sessionId, { editorState: 'open' })
+  assert.equal((await pendingWork(store, live)).length, 1)
 })
 
 test('catalog groups server identities and aliases, excludes local files, never merges by filename',()=>{

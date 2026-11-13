@@ -12,3 +12,5 @@ jobs:
           node-version: '22'
       - run: npm install --omit=dev --ignore-scripts --no-audit --no-fund
       - run: npm test
+      - name: Build native macOS notification bridge
+        run: python3 scripts/build-notification-permissions.py --output "$RUNNER_TEMP/notification-permissions.node"

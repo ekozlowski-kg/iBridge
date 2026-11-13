@@ -1,6 +1,6 @@
 function trayStatusFromState(state) {
   const remoteSessions = (state?.sessions || []).filter((session) => session.remote && session.remote.operation !== 'signature' && session.remote.status !== 'sent')
-  if (remoteSessions.some(s => s.remote.finishStatus === 'error')) return 'Nie potwierdzono zakończenia sesji EZD'
+  if (remoteSessions.some(s => s.remote.recoveryRequired)) return 'Zmiany czekają na wysłanie — otwórz aplikację'
   if (remoteSessions.some((session) => session.remote?.syncStatus === 'error')) {
     return 'Błąd synchronizacji — otwórz aplikację'
   }
@@ -20,24 +20,22 @@ function createTrayController({
   iconPath,
   applicationName,
   onOpen,
+  onOpenInbox = () => {},
   onQuit,
-  onFinish = () => {},
 }) {
   const image = nativeImage.createFromPath(iconPath)
   image.setTemplateImage(true)
   const tray = new Tray(image)
   let status = 'Praca w tle aktywna'
-  let sessions = []
+  let inbox = null
 
   function rebuildMenu() {
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: `Otwórz ${applicationName}`, click: onOpen },
       { type: 'separator' },
       { label: status, enabled: false },
-      ...sessions.map(session => ({
-        label: `Zakończ edycję: ${String(session.name).slice(0, 80)}`,
-        click: () => onFinish(session.id),
-      })),
+      { label: inbox?.message || 'Powiadomienia EZD: wyłączone', enabled: false },
+      { label: 'Otwórz EZD w iBridge', click: onOpenInbox },
       { type: 'separator' },
       { label: `Zakończ ${applicationName}`, click: onQuit },
     ]))
@@ -49,13 +47,12 @@ function createTrayController({
 
   return {
     tray,
+    updateInbox(state) { inbox = state; rebuildMenu() },
     updateStatus(nextStatus) {
       status = String(nextStatus || 'Praca w tle aktywna')
       rebuildMenu()
     },
     updateState(state) {
-      sessions = (state?.sessions || []).filter(s => s.remote?.operation !== 'signature'
-        && s.remote?.connectionStatus === 'active' && s.remote?.status !== 'sent')
       status = trayStatusFromState(state)
       rebuildMenu()
     },

@@ -24,8 +24,9 @@ export function remoteStatusView(remote = {}) {
     }
   }
 
-  if (remote.finishStatus === 'error' || remote.finishStatus === 'unconfirmed') {
-    return { className: 'error', title: 'Nie potwierdzono zakończenia sesji', detail: remote.syncStatus === 'synced' ? 'Plik został zsynchronizowany. Nie udało się potwierdzić zamknięcia sesji w EZD.' : 'Sprawdź zapis dokumentu i zakończenie sesji. Lokalny plik jest zachowany.' }
+  if (remote.syncStatus === 'synced' && !remote.recoveryRequired
+      && (remote.finishStatus === 'error' || remote.finishStatus === 'unconfirmed')) {
+    return { className: 'synced', title: 'Zapisano w EZD', detail: 'Ostatni zapis został potwierdzony przez EZD.' }
   }
   if (remote.connectionStatus === 'needs-reopen') {
     return { className: remote.recoveryRequired ? 'error' : 'idle', title: remote.recoveryRequired ? 'Lokalne zmiany czekają na wysłanie' : 'Brak aktywnej sesji EZD', detail: 'Otwórz dokument ponownie z EZD. Ta lokalna kopia nie jest automatycznie synchronizowana.' }

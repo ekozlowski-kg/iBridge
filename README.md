@@ -1,4 +1,12 @@
-# EZD – iBridge 0.6.1
+# EZD – iBridge 0.6.5 — wersja testowa
+
+## Powiadomienia w samym iBridge
+
+W Ustawieniach otwórz „Zaloguj do EZD”, zaloguj się w oknie iBridge i włącz powiadomienia. Podstawowym źródłem jest Outlook.SprawdzNowePisma — ten sam sygnał, który otwiera w EZD okno „Nowe pisma”. iBridge odpytuje go co 30 sekund. Folder Nowe i powiadomienia pooluser stanowią odrębne uzupełnienie; ich błędy nie blokują podstawowego alertu. Po zamknięciu okna iBridge pozostaje w pasku menu. Brave ani inna zewnętrzna przeglądarka nie są potrzebne.
+
+Niepusty podstawowy sygnał może wywołać alert już przy pierwszym odczycie. Powtarzający się sygnał jest deduplikowany również po restarcie. Cichy stan początkowy dotyczy tylko dodatkowego odczytu folderu i subskrybowanych zdarzeń. Odczyty uzupełniające porównują identyfikatory koszulek, daty przekazania oraz identyfikatory zdarzeń. Konto, zastępstwo, jednostka i stanowisko są rozdzielane; zmiana kontekstu wymaga wybrania „Użyj bieżącego konta”. Alerty nie otwierają automatycznie pism ani nie odrzucają powiadomień w EZD. Sesja w osobnej partycji aplikacji nie jest kopiowana z przeglądarki. Po wygaśnięciu sesji trzeba ponownie zalogować się do EZD w iBridge.
+
+Kontrakt odczytu ustalono na podstawie `SprawdzMojeNowePisma` z głównego skryptu, definicji `Outlook.SprawdzNowePisma`, biblioteki `core.js`, `foldery.controller.js`, szablonu `FolderPism.aspx` i `powiadomienia.controllers.js` z instalacji KG PSP 3.136.31.31. Nie jest to obietnica zgodności z innymi wersjami EZD. Testy automatyczne korzystają z odpowiedzi syntetycznych. Odczyt sygnału po zalogowaniu i dostarczenie testu do Centrum powiadomień sprawdzono na komputerze użytkownika. Użytkownik potwierdził udany test przekazania pisma w wersji 0.6.5; szczegóły: `docs/POWIADOMIENIA.txt`.
 
 Aplikacja macOS do edycji i automatycznej synchronizacji dokumentów EZD PUW.
 Okno statusu ma **340 × 360 px**. Szczegóły, sprawy i historia otwierają większy
@@ -11,7 +19,7 @@ widok dopiero na żądanie. Wywołanie edycji z EZD otwiera tylko edytor.
 - Microsoft Word: obserwacja konkretnego dokumentu przez Apple Events. Dopiero
   po zaobserwowaniu otwarcia i dwóch odczytach bez dokumentu sesja może zostać
   zakończona. Odmowa Automatyzacji i inne edytory korzystają z awaryjnej akcji
-  „Zakończ edycję” w pasku menu; wysyłanie pozostaje automatyczne.
+  „Zakończ ręcznie (awaryjnie)” w szczegółach technicznych; wysyłanie pozostaje automatyczne.
 - Końcowe opróżnienie kolejki, sprawdzenie zawartości i oddzielne zakończenie
   sesji. Potwierdzonego pliku nie wysyłamy ponownie z powodu błędu zakończenia.
 - Poprawione równoczesne importy i serializowane, spójne bajtowo wersje plików.
@@ -19,7 +27,7 @@ widok dopiero na żądanie. Wywołanie edycji z EZD otwiera tylko edytor.
   Nigdy nie łączymy różnych dokumentów wyłącznie po nazwie pliku.
 - Restart rozróżnia historyczne potwierdzenie wysłania od aktywnej sesji.
   Tokeny EZD nie są utrwalane. Pliki i niewysłane zmiany pozostają lokalnie.
-- Ostrzeżenie przed wyjściem z niewysłanymi zmianami lub otwartymi sesjami.
+- Ostrzeżenie przed wyjściem z niewysłanymi zmianami lub nadal otwartym dokumentem.
 - Sprawdzanie stabilnych GitHub Releases przy starcie i raz dziennie; ręczna
   kontrola w ustawieniach. Pobranie wydania otwiera stronę GitHub.
 
@@ -33,7 +41,7 @@ adres usługi i odpowiednio ograniczone uprawnienia od administratora.
 
 Interfejs jawnie oznacza ten brak. Lista „Otwierane z EZD w iBridge” to historia
 dokumentów rzeczywiście otrzymanych z EZD, a nie pełna lista konta. Przycisk
-konta otwiera serwer EZD w przeglądarce. Nie pobieramy haseł ani cookies
+konta otwiera serwer EZD w osobnym oknie iBridge. Nie pobieramy haseł ani cookies
 przeglądarki i nie udajemy pełnej listy na podstawie lokalnych plików.
 
 ## Uruchomienie i testy źródeł
@@ -43,6 +51,7 @@ Wymagany Node.js 22 lub nowszy; testy można uruchomić bez konta EZD i certyfik
 ```sh
 npm install
 npm test
+python3 scripts/build-notification-permissions.py --output electron/native/notification-permissions.node
 npm start
 ```
 
@@ -52,7 +61,21 @@ dokumentu testowego; nie jest zastąpiona testami jednostkowymi.
 
 ## Paczka macOS Apple Silicon
 
-Paczka 0.6.1 jest tworzona z przeanalizowanego runtime 0.6.0. Potrzebny jest
+Testową paczkę 0.6.5 można przygotować z lokalnie zainstalowanego iBridge 0.6.1:
+
+```sh
+python3 scripts/package-local-inbox.py \
+  --runtime '/Applications/EZD - iBridge.app' \
+  --output ./artifacts
+```
+
+Pakowanie wymaga Apple Command Line Tools do kompilacji małego modułu
+Node-API, który odczytuje zgodę macOS i wywołuje systemowe pytanie o powiadomienia.
+Nagłówki Node-API są dołączone w `vendor/node-api` wraz z licencją.
+Skrypt tworzy osobny ZIP, zachowuje istniejący runtime i moduł podpisu,
+podpisuje kopię ad-hoc oraz weryfikuje `codesign --verify --deep --strict`.
+Nie zmienia zainstalowanego egzemplarza. Oryginalna ścieżka pakowania pozostaje
+dostępna: paczka 0.6.1 była tworzona z przeanalizowanego runtime 0.6.0. Potrzebny jest
 oryginalny ZIP o SHA-256:
 
 ```
@@ -72,7 +95,7 @@ oraz Helperów, dodaje opis Automatyzacji, podpisuje ad-hoc i wykonuje
 
 Moduł Java/PKCS#11 i jego runtime pozostają binarnie niezmienione z 0.6.0.
 Dostarczony materiał nie zawiera ich źródeł Java; repozytorium nie deklaruje
-pełnej przebudowy tego modułu. Nowe zmiany dotyczą edycji i synchronizacji.
+pełnej przebudowy tego modułu. Zmiany 0.6.5 dodają monitorowanie folderu i powiadomień.
 
 **Wydanie testowe nie ma Apple Developer ID ani notaryzacji.** Gotowe binaria
 nie są publikowane automatycznie przez CI. Nie ma automatycznej instalacji

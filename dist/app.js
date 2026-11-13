@@ -57,6 +57,8 @@ const model = {
   toastTimer: null,
   signature: null,
   updates: { status: 'not-checked' },
+  inbox: { enabled: true, status: 'checking', message: 'Sprawdzanie ustawień powiadomień…' },
+  inboxPermission: { status: 'unknown' },
 }
 
 const iconPaths = {
@@ -400,7 +402,7 @@ function renderWorkspace(session) {
 
   const remoteActions = session.remote && !isSignature && session.remote.status !== 'sent' && session.remote.connectionStatus === 'active'
     ? `
-      <button type="button" class="button success" data-action="finish-ezd">${icon('check')} Zakończ edycję w EZD</button>
+      <button type="button" class="button" data-action="finish-ezd">Zakończ ręcznie (awaryjnie)</button>
     `
     : ''
 
@@ -418,7 +420,7 @@ function renderWorkspace(session) {
       </div>
 
       ${!session.remote ? renderDropZone() : ''}
-      ${session.remote && !isSignature ? `<div class="connection-note"><strong>${escapeHtml(connectionLabel(session))}</strong><span>${escapeHtml(session.remote.editorState === 'unknown' && canEdit ? 'Wysyłanie jest automatyczne. Po pracy wybierz Zakończ edycję.' : !canEdit ? 'Ta kopia jest historyczna. Nową edycję rozpocznij w EZD.' : 'Każdy stabilny zapis wysyłamy automatycznie.')}</span></div>` : ''}
+      ${session.remote && !isSignature ? `<div class="connection-note"><strong>${escapeHtml(connectionLabel(session))}</strong><span>${escapeHtml(!canEdit ? 'Ta kopia jest historyczna. Nową edycję rozpocznij w EZD.' : 'Zapisz i zamknij dokument w edytorze. iBridge wysyła zapisy i kończy edycję w tle.')}</span></div>` : ''}
 
       <section class="actions-card file-work-card" aria-labelledby="file-work-title">
         <h3 id="file-work-title">Praca z plikiem</h3>
@@ -427,7 +429,6 @@ function renderWorkspace(session) {
           ${canEdit ? `<button type="button" class="button ${editable ? '' : 'primary'}" data-action="open-external">${icon('external')} Otwórz w edytorze</button>` : ''}
           ${isSignature || !canEdit ? '' : `<button type="button" class="button" data-action="replace-document">${icon('replace')} Zmień plik</button>`}
           ${isSignature || !canEdit ? '' : `<button type="button" class="button" data-action="save-version">${icon('save')} Zapisz wersję</button>`}
-          ${remoteActions}
         </div>
         <dl class="file-details">
           <div><dt>Format</dt><dd>${escapeHtml(session.extension)}</dd></div>
@@ -441,6 +442,12 @@ function renderWorkspace(session) {
         <span class="status-dot"></span>
         <div><strong>${escapeHtml(status.title)}</strong><p>${escapeHtml(status.detail)}</p></div>
       </div>
+
+      ${session.remote && !isSignature ? `<details class="actions-card"><summary>Szczegóły techniczne</summary>
+        ${session.remote.editorState === 'unknown' && canEdit ? '<p>Rozpoznawanie zamknięcia dokumentu jest chwilowo niedostępne. Zapis nadal wysyłamy automatycznie; rozpoznawianie ponawiamy w tle.</p>' : ''}
+        ${['error', 'unconfirmed'].includes(session.remote.finishStatus) ? `<p>EZD nie potwierdził zakończenia sesji technicznej. ${escapeHtml(session.remote.finishError?.message || '')}</p>` : ''}
+        ${remoteActions ? `<p>Jeśli po zamknięciu dokumentu edycja nadal trwa, możesz zakończyć ją ręcznie.</p>${remoteActions}` : ''}
+      </details>` : ''}
 
       <section class="workspace-card">
         <h3>Ostatnia aktywność</h3>
@@ -580,6 +587,31 @@ function renderSettingsPage() {
         </header>
         <div class="settings-grid">
           ${renderUpdateSettings()}
+          <section class="settings-section">
+            <div class="settings-title">${icon('info')}<div><h2>Powiadomienia z EZD</h2><p>Podstawą jest sygnał okna „Nowe pisma”. iBridge sprawdza go sam w tle, bez przeglądarki.</p></div></div>
+            <div class="settings-controls">
+              <label class="toggle-row">
+                <span class="toggle-copy"><strong>Powiadomienia macOS o nowych pismach i zdarzeniach</strong><small>Włączone domyślnie. Co 30 sekund, gdy iBridge jest uruchomiony. Nowy sygnał wywołuje alert od pierwszego odczytu.</small></span>
+                <input type="checkbox" data-setting="inbox-enabled" ${model.inbox.enabled ? 'checked' : ''} />
+                <span class="toggle"></span>
+              </label>
+              <p role="status">${escapeHtml(model.inbox.message)}</p>
+              <p role="status">Powiadomienia macOS: ${escapeHtml(({ granted: 'zgoda udzielona, banery włączone.', denied: 'wyłączone — włącz je w ustawieniach macOS.', 'not-determined': 'wymagana zgoda systemowa.', quiet: 'banery wyłączone w macOS.', unknown: 'nie udało się potwierdzić zgody systemowej.' })[model.inboxPermission.status] || 'stan nieznany.')}</p>
+              ${model.inbox.account ? `<p><strong>Konto:</strong> ${escapeHtml(model.inbox.account)}</p>` : ''}
+              ${model.inbox.lastCheckAt ? `<p>Ostatni poprawny odczyt sygnału: ${escapeHtml(new Date(model.inbox.lastCheckAt).toLocaleString('pl-PL'))}${model.inbox.count === null ? '' : ` · Pozycje folderu Nowe: ${model.inbox.count}`}</p>` : ''}
+              ${model.inbox.supplementError ? '<p>Podstawowy sygnał działa. Dane uzupełniające są chwilowo niedostępne.</p>' : ''}
+              <div class="header-actions">
+                <button type="button" class="button compact" data-action="inbox-login">Zaloguj do EZD</button>
+                <button type="button" class="button compact" data-action="inbox-check" ${!model.inbox.enabled ? 'disabled' : ''}>Sprawdź teraz</button>
+                <button type="button" class="button compact" data-action="inbox-test">Test powiadomienia</button>
+                <button type="button" class="button compact" data-action="inbox-permission-settings">Ustawienia powiadomień macOS</button>
+                ${model.inboxPermission.status !== 'granted' ? '<button type="button" class="button compact" data-action="inbox-authorize">Włącz powiadomienia macOS</button>' : ''}
+                ${model.inbox.status === 'account-changed' ? '<button type="button" class="button compact" data-action="inbox-rebind">Użyj bieżącego konta</button>' : ''}
+              </div>
+              <p>Po zalogowaniu możesz zamknąć okno EZD. Sesja EZD jest przechowywana w iBridge; po jej wygaśnięciu zaloguj się ponownie.</p>
+              <p>Banery wymagają zgody w Ustawieniach systemowych macOS → Powiadomienia → EZD - iBridge. Poprawny odczyt EZD nie potwierdza tej zgody. Przycisk testu pozwala sprawdzić widoczność banera. Tryb „Nie przeszkadzać” lub udostępnianie ekranu może wyciszać banery mimo zgody.</p>
+            </div>
+          </section>
           <section class="settings-section">
             <div class="settings-title">${icon('power')}<div><h2>Uruchamianie</h2><p>Aplikacja może czekać w tle na odnośniki EZD.</p></div></div>
             <div class="settings-controls">
@@ -1045,6 +1077,21 @@ root.addEventListener('click', async (event) => {
       const value = root.querySelector('[data-setting="service-url"]')?.value || ''
       const result = await api.testService(value)
       showToast(result.ok ? `Usługa odpowiada (HTTP ${result.status}).` : `Usługa zwróciła HTTP ${result.status}.`, result.ok ? 'success' : 'warning')
+    } else if (action === 'inbox-login') {
+      await api.loginInbox()
+    } else if (action === 'inbox-check') {
+      model.inbox = await api.checkInbox()
+    } else if (action === 'inbox-test') {
+      const result = await api.testInboxNotification()
+      showToast(result.inCenter === true ? 'macOS zapisał test w Centrum powiadomień. Brak banera może wynikać z wyciszenia systemowego.'
+        : result.inCenter === false ? 'Test nie został znaleziony w Centrum powiadomień. Sprawdź ustawienia macOS.'
+        : 'Test przekazany do macOS. Sprawdź baner lub Centrum powiadomień.', result.inCenter === false ? 'warning' : 'info')
+    } else if (action === 'inbox-authorize') {
+      model.inboxPermission = await api.authorizeInboxNotifications()
+    } else if (action === 'inbox-permission-settings') {
+      await api.openInboxPermissionSettings()
+    } else if (action === 'inbox-rebind') {
+      model.inbox = await api.rebindInbox()
     } else if (action === 'reveal-storage') {
       await api.revealStorage()
     }
@@ -1061,6 +1108,8 @@ root.addEventListener('change', async (event) => {
       model.launchAtLogin = result.enabled
       acceptState(result.state)
       showToast(result.enabled ? 'Autostart został włączony.' : 'Autostart został wyłączony.')
+    } else if (setting === 'inbox-enabled') {
+      model.inbox = await api.setInboxEnabled(control.checked)
     } else if (setting === 'accept-protocol') {
       acceptState(await api.updateSettings({ acceptLegacyProtocol: control.checked }))
     } else if (setting === 'automatic-versions') {
@@ -1168,6 +1217,10 @@ async function initialize() {
       if (message.type === 'error' || message.type === 'warning') showToast(message.message || 'Sprawdź stan sesji.', message.type)
     })
     model.updates = await api.getUpdates()
+    model.inbox = await api.getInbox()
+    model.inboxPermission = await api.getInboxPermission()
+    api.onInboxPermissionChanged(state => { model.inboxPermission = state; if (model.view === 'settings') render() })
+    api.onInboxChanged(inbox => { model.inbox = inbox; if (model.view === 'settings') render() })
     api.onUpdatesChanged(updates => { model.updates = updates; if (model.view === 'settings') render() })
   } catch (error) {
     clearSignatureSubscriptions()

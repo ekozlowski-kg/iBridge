@@ -1,7 +1,7 @@
 {
   "name": "ezd-ibridge",
   "productName": "EZD - iBridge",
-  "version": "0.6.1",
+  "version": "0.6.5",
   "description": "EZD - iBridge do edycji, synchronizacji i wersjonowania dokumentów na macOS.",
   "homepage": "https://www.gov.pl/web/uw-podlaski",
   "desktopName": "pl.kckr.ezd-integracja",

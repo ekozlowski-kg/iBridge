@@ -7,16 +7,18 @@ const WORD_SCRIPT = `on run argv
 set targetPath to item 1 of argv
 set targetHfs to (POSIX file targetPath) as text
 if application id "com.microsoft.Word" is not running then return "NOT_RUNNING"
+set incomplete to false
 tell application id "com.microsoft.Word"
 repeat with d in documents
 try
-set diskPath to full name of d
+set diskPath to (full name of d) as text
 if diskPath is targetHfs or diskPath is targetPath then return "OPEN"
 on error
-return "UNKNOWN"
+set incomplete to true
 end try
 end repeat
 end tell
+if incomplete then return "UNKNOWN"
 return "CLOSED"
 end run`
 
@@ -74,12 +76,12 @@ class DocumentObserver {
           await this.onClosed({ sessionId: entry.sessionId })
         } else if (!entry.seen && this.now() - entry.started >= this.openingTimeoutMs) {
           await this.change(entry, 'unknown')
-          clearInterval(entry.timer)
         }
       } else {
         entry.absences = 0
         await this.change(entry, 'unknown')
-        clearInterval(entry.timer)
+        // Word can be busy saving or showing a dialog. Keep observing: a
+        // temporary error must neither finish the session nor disable closure.
       }
     } finally { entry.running = false }
   }

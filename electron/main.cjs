@@ -12,7 +12,13 @@ const {
   nativeTheme,
   shell,
   Tray,
+  session,
+  powerMonitor,
 } = require('electron')
+const { EzdInboxClient } = require('./ezd-inbox-client.cjs')
+const { EzdInboxMonitor } = require('./ezd-inbox-monitor.cjs')
+const { createInboxWindowController } = require('./ezd-inbox-window.cjs')
+const { NotificationPermissions, loadNativePermissions } = require('./notification-permissions.cjs')
 const { SessionStore } = require('./session-store.cjs')
 const { EzdSessionCoordinator } = require('./ezd-session-coordinator.cjs')
 const {
@@ -62,6 +68,11 @@ let expandedWindow = false
 const notifiedProblems = new Set()
 let diagnosticLog = null
 let trayController = null
+let inboxMonitor = null
+let inboxWindow = null
+let lastInboxProblem = null
+let notificationPermissions = null
+const inboxAlerts = new Set()
 let applicationInitialized = false
 let queuedProtocolUrl = findProtocolArgument(process.argv)
 const queuedProtocolUrls = queuedProtocolUrl ? [queuedProtocolUrl] : []
@@ -102,6 +113,38 @@ function notifyProblem(sessionId, kind, message) {
     notification.on('click', () => showMainWindow().catch(() => {}))
     notification.show()
   }
+}
+
+async function showInboxAlert(body) {
+  if (!Notification.isSupported()) throw new Error('Powiadomienia systemowe niedostępne.')
+  const permission = await notificationPermissions.refresh()
+  if (permission.status !== 'granted') throw new Error('Włącz banery iBridge w powiadomieniach macOS.')
+  const previous = await notificationPermissions.delivered()
+  const notification = new Notification({ title: APPLICATION_NAME, body, silent: false })
+  // Keep live objects: collecting a new Notification can remove it from Notification Center.
+  inboxAlerts.add(notification)
+  notification.once('close', () => inboxAlerts.delete(notification))
+  notification.once('failed', () => inboxAlerts.delete(notification))
+  if (inboxAlerts.size > 100) inboxAlerts.delete(inboxAlerts.values().next().value)
+  notification.on('click', () => inboxWindow.open())
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Nie potwierdzono przekazania powiadomienia.')), 10_000)
+    notification.once('show', () => { clearTimeout(timeout); resolve() })
+    notification.once('failed', () => { clearTimeout(timeout); reject(new Error('System odrzucił powiadomienie.')) })
+    notification.show()
+  })
+  // Electron's "show" event does not confirm that macOS permissions allow a banner.
+  let inCenter = null
+  if (previous) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const history = await notificationPermissions.delivered()
+      if (!history) break
+      inCenter = notification.id ? history.includes(notification.id) : history.some(id => !previous.includes(id))
+      if (inCenter) break
+      await new Promise(resolve => setTimeout(resolve, 200))
+    }
+  }
+  return { inCenter }
 }
 
 function setWindowMode(mode) {
@@ -314,6 +357,19 @@ async function handleProtocolUrl(rawUrl) {
 }
 
 function registerIpc() {
+  for (const [channel, handler] of [
+    ['inbox:get', () => inboxMonitor.snapshot()],
+    ['inbox:enabled', enabled => inboxMonitor.setEnabled(enabled)],
+    ['inbox:check', () => inboxMonitor.check()],
+    ['inbox:rebind', () => inboxMonitor.rebind()],
+    ['inbox:login', () => { inboxWindow.open(); return { ok: true } }],
+    ['inbox:test', () => showInboxAlert('To jest test powiadomień iBridge.')],
+    ['inbox:permission', () => notificationPermissions.refresh()],
+    ['inbox:authorize', () => notificationPermissions.enable()],
+    ['inbox:permission-settings', () => notificationPermissions.openSettings()],
+  ]) {
+    ipcMain.handle(channel, (event, ...args) => { assertTrustedSender(event); return handler(...args) })
+  }
   ipcMain.handle('window:mode', (event, mode) => {
     assertTrustedSender(event)
     if (!['compact', 'details'].includes(mode)) throw new Error('Nieprawidłowy tryb okna.')
@@ -328,7 +384,8 @@ function registerIpc() {
   })
   ipcMain.handle('account:open', event => {
     assertTrustedSender(event)
-    return shell.openExternal('https://ezd.kg.straz.gov.pl/')
+    inboxWindow.open()
+    return { ok: true }
   })
   ipcMain.handle('state:get', (event) => {
     assertTrustedSender(event)
@@ -437,6 +494,7 @@ function registerIpc() {
       noLink: true,
     })
     if (answer.response !== 0) return null
+    await store.patchRemote(sessionId, { editorState: 'closed' })
     return finishEditing(sessionId)
   })
 
@@ -596,6 +654,20 @@ app.whenReady().then(async () => {
     onError: async event => {
       const { error, firstOccurrence, ...safe } = event
       await diagnosticLog.write(safe)
+      const remote = store.getSession(event.sessionId).remote
+      const cleanupOnly = event.operation === 'AddInZakonczSesje'
+        && remote.syncStatus === 'synced' && !remote.recoveryRequired
+      if (cleanupOnly) {
+        // Keep the real server result in diagnostics. A rejected cleanup does
+        // not undo an acknowledged upload and needs no alarming banner.
+        if (!event.retryable) {
+          await store.patchRemote(event.sessionId, { connectionStatus: 'needs-reopen', retryAt: null })
+          ezdSessions.dropSession(event.sessionId)
+          autosync.unwatch(event.sessionId)
+          documentObserver.unwatch(event.sessionId)
+        }
+        return
+      }
       if ([401,403].includes(Number(error?.httpStatus))) {
         await store.patchRemote(event.sessionId, { connectionStatus: 'needs-reopen', recoveryRequired: true })
         ezdSessions.dropSession(event.sessionId)
@@ -611,12 +683,47 @@ app.whenReady().then(async () => {
   documentObserver = new DocumentObserver({
     onState: async ({ sessionId, state }) => {
       await store.patchRemote(sessionId, { editorState: state })
-      if (state === 'unknown') notifyProblem(sessionId, 'observer', 'Nie można rozpoznać zamknięcia dokumentu. Wysyłka działa w tle; po pracy wybierz „Zakończ edycję” w pasku menu.')
     },
     onClosed: ({ sessionId }) => finishEditing(sessionId),
   })
   updateChecker = new UpdateChecker({ currentVersion: app.getVersion(), directory: dataDirectory,
     onChange: state => sendToRenderer('updates-changed', state) })
+  inboxWindow = createInboxWindowController({ BrowserWindow, session, ipcMain,
+    onLoaded: () => inboxMonitor?.check() })
+  notificationPermissions = new NotificationPermissions({ directory: dataDirectory, native: loadNativePermissions(),
+    onChange: state => sendToRenderer('inbox-permission-changed', state),
+    openSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.Notifications-Settings.extension'),
+    prompt: async () => {
+      await showMainWindow()
+      const answer = await dialog.showMessageBox(mainWindow, { type: 'question', title: APPLICATION_NAME,
+        message: 'Włączyć powiadomienia o nowych pismach?',
+        detail: 'iBridge sprawdza EZD w tle co 30 sekund. Zgoda macOS pozwoli wyświetlać banery i odtwarzać dźwięk. Jeśli wcześniej odmówiono zgody, otworzymy ustawienia systemowe.',
+        buttons: ['Włącz powiadomienia', 'Później'], defaultId: 0, cancelId: 1, noLink: true })
+      return answer.response === 0
+    },
+  })
+  inboxMonitor = new EzdInboxMonitor({
+    client: new EzdInboxClient({ fetchImpl: inboxWindow.session.fetch.bind(inboxWindow.session) }),
+    directory: dataDirectory,
+    notify: async ({ count, eventCount = 0 }) => {
+      const delivered = await showInboxAlert(`${count ? `Nowe pisma w EZD: ${count}. ` : ''}${eventCount ? `Inne powiadomienia EZD: ${eventCount}. ` : ''}Kliknij, aby otworzyć EZD w iBridge.`)
+      if (delivered.inCenter !== true) throw new Error('Nie potwierdzono zapisu w Centrum powiadomień macOS.')
+    },
+    onChange: state => {
+      sendToRenderer('inbox-changed', state)
+      trayController?.updateInbox(state)
+      if (['ready', 'disabled'].includes(state.status)) lastInboxProblem = null
+      if (state.enabled && ['login-required', 'account-changed', 'storage-error'].includes(state.status)
+        && state.status !== lastInboxProblem && Notification.isSupported()
+        && notificationPermissions.snapshot().status === 'granted') {
+        lastInboxProblem = state.status
+        const notification = new Notification({ title: APPLICATION_NAME, body: state.message })
+        notification.on('click', () => showMainWindow().catch(() => {}))
+        notification.show()
+      }
+    },
+  })
+  powerMonitor.on('resume', () => inboxMonitor?.check())
   trayController = createTrayController({
     Tray,
     Menu,
@@ -624,12 +731,14 @@ app.whenReady().then(async () => {
     iconPath: path.join(__dirname, '..', 'dist', 'ibridge-trayTemplate.png'),
     applicationName: APPLICATION_NAME,
     onOpen: () => showMainWindow().catch(() => {}),
+    onOpenInbox: () => inboxWindow.open(),
     onQuit: () => {
       app.quit()
     },
-    onFinish: sessionId => finishEditing(sessionId).catch(error => notifyProblem(sessionId, 'finish', error.message)),
   })
   trayController.updateState(store.snapshot())
+  // Monitoring starts by default; an explicitly saved opt-out is preserved.
+  await inboxMonitor.init()
   registerIpc()
   if (process.env.EZD_SKIP_UPDATE_CHECK !== '1') updateChecker.start().catch(() => {})
   applicationInitialized = true
@@ -637,7 +746,8 @@ app.whenReady().then(async () => {
   const startHidden = Boolean(queuedProtocolUrl) || requestedBackgroundLaunch || loginItem.wasOpenedAsHidden
   if (startHidden) app.dock?.hide()
   createWindow({ showOnReady: !startHidden })
-  promptForLaunchAtLogin().catch((error) => {
+  mainWindow.on('focus', () => notificationPermissions.refresh().catch(() => {}))
+  notificationPermissions.onboard().then(() => notificationPermissions.snapshot().status === 'not-determined' ? undefined : promptForLaunchAtLogin()).catch((error) => {
     sendToRenderer('protocol-message', { type: 'error', message: error.message })
   })
 
@@ -670,7 +780,7 @@ app.on('before-quit', (event) => {
       const pending = store ? await pendingWork(store, ezdSessions) : []
       if (pending.length && !forcedExit) {
         const answer = await dialog.showMessageBox(mainWindow, { type: 'warning', title: APPLICATION_NAME,
-          message: 'Pozostały niewysłane zmiany lub niezakończone sesje EZD.',
+          message: 'Dokument jest nadal otwarty lub zmiany czekają na wysłanie.',
           detail: 'Wyjście zachowa pliki lokalnie. Po ponownym uruchomieniu może być konieczne otwarcie dokumentu z EZD.',
           buttons: ['Kontynuuj synchronizację', 'Wyjdź i zachowaj pliki lokalnie'], defaultId: 0, cancelId: 0, noLink: true })
         if (answer.response !== 1) return
@@ -680,6 +790,8 @@ app.on('before-quit', (event) => {
       quitRequested = true
       documentObserver?.close()
       updateChecker?.close()
+      await inboxMonitor?.close()
+      inboxWindow?.close()
       // Do not silently finish a session while its document is still open.
       await ezdSignatures?.releaseAll()
       let timeout

@@ -1,0 +1,154 @@
+EZD — iBridge 0.6.5: powiadomienia (wersja testowa)
+
+URUCHOMIENIE
+1. Zakończ starsze iBridge z jego menu. Rozpakuj paczkę testową.
+2. Otwórz znajdującą się w niej aplikację „EZD - iBridge.app”.
+3. Przy pierwszym uruchomieniu iBridge proponuje włączenie powiadomień.
+   Po wybraniu „Włącz powiadomienia” macOS pyta o zgodę. Jeśli wcześniej
+   odmówiono zgody, otwierają się ustawienia systemowe. „Później” pozostawia
+   przypomnienie i przycisk w ustawieniach aplikacji, bez ponawiania pytania
+   przy każdym starcie. Jeśli zgoda i banery są już włączone, nie pyta ponownie.
+   Następnie: Ustawienia → Powiadomienia z EZD → Zaloguj do EZD.
+4. Zaloguj się w oknie należącym do iBridge. Wybierz właściwe konto/stanowisko.
+5. Powiadomienia są domyślnie włączone. Możesz je wyłączyć w ustawieniach;
+   aplikacja zachowuje ten wybór przy kolejnych uruchomieniach.
+6. Poczekaj na komunikat „Sygnał „Nowe pisma” aktywny” i sprawdź etykietę konta.
+7. Zamknij okno EZD oraz główne okno iBridge. Aplikacja pozostaje w pasku menu.
+8. W ustawieniach powiadomień macOS zezwól iBridge na wyświetlanie alertów.
+   Przycisk „Test powiadomienia” sprawdza baner bez przekazywania pisma.
+   Sam poprawny odczyt EZD ani zdarzenie „show” Electron nie potwierdzają,
+   że macOS ma włączone banery dla aplikacji.
+9. Opcjonalnie włącz istniejące „Uruchamiaj razem z systemem”.
+
+Nie trzeba uruchamiać Brave ani pozostawiać otwartej karty. iBridge musi być
+uruchomiony, komputer aktywny i połączony z siecią urzędu/VPN, a sesja EZD ważna.
+Uśpienie komputera wstrzymuje sprawdzanie; po wybudzeniu następuje odczyt.
+Po wygaśnięciu sesji zaloguj się ponownie w oknie iBridge. Sesja jest osobna
+od sesji używanej do edycji pojedynczego dokumentu i od sesji przeglądarki.
+
+JAK DZIAŁA
+- Podstawowy sygnał: Outlook.SprawdzNowePisma, ten sam, który w EZD wyświetla
+  okno „Nowe pisma”, niezależnie od subskrypcji powiadomień koszulki.
+- Cykl co 30 sekund, również podczas błędów sieci; przy wygaśnięciu sesji
+  trzeba zalogować się ponownie. Czas żądania jest odliczany od odstępu cyklu.
+- Brak nakładających się odczytów; limit czasu cyklu: 25 sekund.
+- Niepusty podstawowy sygnał wywołuje alert także przy pierwszym odczycie.
+  Powtarzające się ID z okna są deduplikowane; stan jest zachowany po restarcie.
+  Pusta odpowiedź kończy aktualny epizod, pozwalając zgłosić późniejszy powrót.
+- Cichy pierwszy odczyt dotyczy tylko uzupełniającego folderu i pooluser.
+  Brak lub błąd tych danych nie blokuje podstawowego sygnału.
+  Podstawowy alert zostaje zapisany i wysłany przed odczytem uzupełniającym.
+  Odczyt uzupełniający ma limit 8 sekund.
+- Wykrywa zmianę ID nawet przy niezmienionej liczbie pism; powrót koszulki do
+  folderu lub zmiana daty przekazania może wywołać kolejny alert.
+- Odczytuje wszystkie grupy folderu, niezależnie od paginacji i zwinięcia grup.
+- Konto operatora, konto zastępowane, jednostka i stanowisko są przypięte.
+  Zmiana wymaga „Użyj bieżącego konta”; zeruje stan deduplikacji.
+  Podstawowy sygnał pochodzi z odpowiedzi serwera i nie jest filtrowany według
+  widocznej zawartości folderu innego konta/zastępstwa.
+- Powiadomienia systemu EZD są odczytywane bez odrzucania/oznaczania ich jako
+  przeczytane. Konfigurację typów zdarzeń ustala konto w samym EZD.
+- Nowe pozycje folderu są wykrywane również przy wyłączonych subskrypcjach EZD.
+- Jedno podsumowanie macOS na cykl; nazwy pism i osób nie trafiają do alertu.
+- Natywny moduł Node-API odczytuje UNUserNotificationCenter w procesie iBridge
+  i rozróżnia brak decyzji, odmowę, ciche powiadomienia i włączone banery.
+  Zgoda jest żądana dopiero po wyborze użytkownika. Wyłączenie banerów
+  zatrzymuje potwierdzenie dostarczenia; alert pozostaje w kolejce.
+  Zmiana zgody jest odczytywana przy aktywacji okna i przed wysłaniem alertu.
+- Obiekty aktywnych powiadomień są utrzymywane w pamięci, aby sprzątanie
+  pamięci JavaScript nie usuwało ich przedwcześnie z Centrum powiadomień.
+- Kliknięcie otwiera EZD w iBridge. Brak automatycznego odbioru nowych pism.
+
+LOKALNE DANE
+Sesja znajduje się w partycji Electron „persist:ezd-inbox”, w katalogu danych
+aplikacji. W razie uwierzytelniania HTTP iBridge wyświetla własny formularz
+domenowy dla dokładnego adresu HTTPS EZD. Login i hasło są przekazywane do
+obsługi wyzwania Electron; aplikacja nie zapisuje ich w plikach ustawień.
+Chromium utrzymuje własny stan sesji uwierzytelnienia.
+Plik ezd-inbox.json zawiera włączenie monitorowania, etykietę konta, klucze
+koszulek/zdarzeń, ID aktywnego sygnału „Nowe pisma” i liczniki alertów oczekujących. Dostęp do pliku: właściciel.
+Nie są do niego zapisywane treści dokumentów, cookies ani tokeny edycji.
+Historia zdarzeń do deduplikacji ma limit 10 000 kluczy. Po awarii dokładnie
+między wyświetleniem alertu a zapisaniem potwierdzenia alert może się powtórzyć.
+
+ŹRÓDŁA KONTRAKTU — INSTALACJA 3.136.31.31, KG PSP
+POST /ajaxpro/ezd.Web.Outlook,ezd.Web.ashx
+  Content-Type: text/plain; charset=utf-8
+  X-AjaxPro-Method: SprawdzNowePisma
+  Body: {}
+  Odpowiedź: {value: HTML_okna}. Parsowanie wyłącznie jako JSON i bierny HTML;
+  bez eval, bez uruchamiania kodu, bez kopiowania fragmentu HTML do interfejsu.
+  Źródła: definicja Outlook_class, core.js, SprawdzNowePisma_Completed.
+  Strona EZD uruchamia własny timer tego mechanizmu co 60 sekund.
+  W iBridge na życzenie ustawiono odstęp 30 sekund.
+
+Dane uzupełniające (nie blokują podstawowego alertu):
+GET /FolderPism.aspx?Status=1
+  lblUzytkownik, lblUzytkownikZastepstwo, lblDzial, lblStanowisko.
+POST /api/koszulki/grupyfolderu {IdStatus:"1"}
+  Rok, Miesiac, Dzien, Ilosc.
+POST /api/koszulki/koszulkigrupyfolderu {Id:"ROK_MIESIAC_DZIEN",Status:"1"}
+  id, nz, ns, nd, nddk, nrdk, dd, tr.
+POST /api/powiadomienia/pooluser {Display,System,Page}
+  Powiadomienia: Id, IdKoszulki, DataZdarzeniaShort, IdZdarzenia,
+  Zdarzenie, Uzytkownik, NazwaKoszulki.
+To ostatnie żądanie jest też używane przez stronę do przekazywania informacji
+o kliencie. Moduł identyfikuje się jako iBridge macOS. Nie korzysta z osobnego
+endpointu odrzucania powiadomień.
+Kontrakt wewnętrznego interfejsu może zmienić się po aktualizacji EZD.
+
+WERYFIKACJA
+Testy automatyczne: parsowanie konta, rozdzielenie zastępstw, odczyt grup,
+niepełne dane, zmiana konta w trakcie odczytu, utrata sesji, deduplikacja,
+restart, automatyczny timer, zatrzymanie oraz ponawianie niedostarczonego alertu.
+Dodatkowo: pierwsze uruchomienie i domyślne włączenie, zachowanie wyłączenia,
+logowanie HTTP tylko do EZD, systemowa zgoda, odłożenie zgody, odmowa i ponowny
+start bez ponawiania pytania; dokładny kontrakt AJAX podstawowego sygnału, bierne parsowanie HTML,
+alert przy pierwszym niepustym sygnale, kolejność przed uzupełnieniami,
+niezależność od ich błędów i deduplikacja między źródłami.
+Parser konta sprawdzono również na lokalnej kopii rzeczywistego HTML strony.
+
+Test na komputerze użytkownika, 13.11.2026, wersja 0.6.5:
+- Logowanie we własnym oknie iBridge i odczyt właściwego aktywnego konta.
+- Automatyczne odczyty co 30 sekund. Powiadomienia domyślnie włączone.
+- W teście przekazania pisma sygnał podstawowy oraz folder Nowe zmieniły się
+  z 0 na 1. Kolejka dostarczenia została opróżniona.
+- Natywny odczyt potwierdził zgodę macOS, włączone banery oraz obecność
+  powiadomień aplikacji w Centrum powiadomień. Użytkownik potwierdził,
+  że test działa, i zaakceptował wysłanie zmian do repozytorium.
+- Kolejny cykl zachował ten sam sygnał bez ponownego alertu.
+- Wcześniej sprawdzono odczyty przy zamkniętym oknie EZD w iBridge.
+  Zewnętrzna przeglądarka nie jest używana przez monitor; podczas porównania
+  działała niezależnie i nie testowano jej zamknięcia.
+Widoczność banera zależy również od ustawień systemowych i trybu skupienia.
+iBridge nie zmienia tych ustawień samodzielnie. Udany test powiadomień
+nie jest potwierdzeniem pełnego testu zamknięcia dokumentu w Wordzie.
+
+Do osobnej akceptacji pozostają: nowa wersja dokumentu z subskrypcją, utrata
+VPN/sesji i wybudzenie oraz zmiana zastępstwa w rzeczywistym środowisku.
+Restart i deduplikacja są objęte testami automatycznymi.
+
+Paczka jest podpisana ad-hoc do lokalnych testów. Nie ma notaryzacji Apple.
+Nie zastępuje automatycznie zainstalowanego egzemplarza ani nie publikuje wydania.
+Runtime Electron i moduł podpisu pochodzą z lokalnie zainstalowanego iBridge 0.6.1.
+
+BUDOWANIE ZE ŹRÓDEŁ
+Moduł natywnej zgody jest kompilowany przez package-local-inbox.py za pomocą
+Apple Command Line Tools (clang++). Nagłówki stabilnego Node-API pochodzą
+z Node.js v22.14.0 i są dołączone z licencją w vendor/node-api. Użytkownik
+gotowej aplikacji nie potrzebuje kompilatora ani żadnych dodatkowych instalacji.
+
+Edycja dokumentu — 0.6.5
+- Każdy stabilny zapis jest wysyłany automatycznie. Sam zapis nie kończy edycji.
+- Po wykryciu zamknięcia dokumentu w Wordzie iBridge wysyła ostatni zapis
+  i próbuje zakończyć sesję EZD. Chwilowy brak odpowiedzi Worda nie wyłącza
+  dalszego obserwowania. Rozpoznawanie wymaga zgody macOS na Automatyzację Worda.
+- Menu paska nie zawiera już obowiązkowo wyglądającego „Zakończ edycję”.
+  Awaryjne ręczne zakończenie pozostaje w rozwijanych szczegółach technicznych.
+- Brak potwierdzenia technicznego zakończenia sesji nie zmienia potwierdzonego
+  zapisu w błąd wysyłki. Wynik EZD pozostaje w szczegółach i logu.
+- Ostrzeżenie przy wyjściu dotyczy niewysłanych zmian lub nadal otwartego
+  dokumentu, a nie samego braku potwierdzenia zamknięcia starej sesji.
+- W diagnostyce użytkownika potwierdzono AddInUploadFile: status 0,
+  a następnie AddInZakonczSesje: status 1. Przyczyna odrzucenia zamknięcia
+  po stronie EZD pozostaje niepotwierdzona.
