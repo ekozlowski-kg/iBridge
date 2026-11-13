@@ -57,6 +57,7 @@ const model = {
   toastTimer: null,
   signature: null,
   updates: { status: 'not-checked' },
+  inbox: { enabled: false, status: 'disabled', message: 'Powiadomienia wyłączone.' },
 }
 
 const iconPaths = {
@@ -581,6 +582,25 @@ function renderSettingsPage() {
         <div class="settings-grid">
           ${renderUpdateSettings()}
           <section class="settings-section">
+            <div class="settings-title">${icon('info')}<div><h2>Powiadomienia z EZD</h2><p>iBridge sam sprawdza folder Nowe i powiadomienia EZD w tle, bez uruchamiania przeglądarki.</p></div></div>
+            <div class="settings-controls">
+              <label class="toggle-row">
+                <span class="toggle-copy"><strong>Powiadomienia macOS o nowych pismach i zdarzeniach</strong><small>Co 60 sekund, gdy iBridge jest uruchomiony. Pierwszy odczyt tworzy stan początkowy.</small></span>
+                <input type="checkbox" data-setting="inbox-enabled" ${model.inbox.enabled ? 'checked' : ''} />
+                <span class="toggle"></span>
+              </label>
+              <p role="status">${escapeHtml(model.inbox.message)}</p>
+              ${model.inbox.account ? `<p><strong>Konto:</strong> ${escapeHtml(model.inbox.account)}</p>` : ''}
+              ${model.inbox.lastCheckAt ? `<p>Ostatni poprawny odczyt: ${escapeHtml(formatDate(model.inbox.lastCheckAt))} · Nowe: ${model.inbox.count}</p>` : ''}
+              <div class="header-actions">
+                <button type="button" class="button compact" data-action="inbox-login">Zaloguj do EZD</button>
+                <button type="button" class="button compact" data-action="inbox-check" ${!model.inbox.enabled ? 'disabled' : ''}>Sprawdź teraz</button>
+                ${model.inbox.status === 'account-changed' ? '<button type="button" class="button compact" data-action="inbox-rebind">Użyj bieżącego konta</button>' : ''}
+              </div>
+              <p>Po zalogowaniu możesz zamknąć okno EZD. Sesja EZD jest przechowywana w iBridge; po jej wygaśnięciu zaloguj się ponownie.</p>
+            </div>
+          </section>
+          <section class="settings-section">
             <div class="settings-title">${icon('power')}<div><h2>Uruchamianie</h2><p>Aplikacja może czekać w tle na odnośniki EZD.</p></div></div>
             <div class="settings-controls">
               <label class="toggle-row">
@@ -1045,6 +1065,12 @@ root.addEventListener('click', async (event) => {
       const value = root.querySelector('[data-setting="service-url"]')?.value || ''
       const result = await api.testService(value)
       showToast(result.ok ? `Usługa odpowiada (HTTP ${result.status}).` : `Usługa zwróciła HTTP ${result.status}.`, result.ok ? 'success' : 'warning')
+    } else if (action === 'inbox-login') {
+      await api.loginInbox()
+    } else if (action === 'inbox-check') {
+      model.inbox = await api.checkInbox()
+    } else if (action === 'inbox-rebind') {
+      model.inbox = await api.rebindInbox()
     } else if (action === 'reveal-storage') {
       await api.revealStorage()
     }
@@ -1061,6 +1087,8 @@ root.addEventListener('change', async (event) => {
       model.launchAtLogin = result.enabled
       acceptState(result.state)
       showToast(result.enabled ? 'Autostart został włączony.' : 'Autostart został wyłączony.')
+    } else if (setting === 'inbox-enabled') {
+      model.inbox = await api.setInboxEnabled(control.checked)
     } else if (setting === 'accept-protocol') {
       acceptState(await api.updateSettings({ acceptLegacyProtocol: control.checked }))
     } else if (setting === 'automatic-versions') {
@@ -1168,6 +1196,8 @@ async function initialize() {
       if (message.type === 'error' || message.type === 'warning') showToast(message.message || 'Sprawdź stan sesji.', message.type)
     })
     model.updates = await api.getUpdates()
+    model.inbox = await api.getInbox()
+    api.onInboxChanged(inbox => { model.inbox = inbox; if (model.view === 'settings') render() })
     api.onUpdatesChanged(updates => { model.updates = updates; if (model.view === 'settings') render() })
   } catch (error) {
     clearSignatureSubscriptions()

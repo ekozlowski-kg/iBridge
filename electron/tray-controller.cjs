@@ -20,6 +20,7 @@ function createTrayController({
   iconPath,
   applicationName,
   onOpen,
+  onOpenInbox = () => {},
   onQuit,
   onFinish = () => {},
 }) {
@@ -28,12 +29,15 @@ function createTrayController({
   const tray = new Tray(image)
   let status = 'Praca w tle aktywna'
   let sessions = []
+  let inbox = null
 
   function rebuildMenu() {
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: `Otwórz ${applicationName}`, click: onOpen },
       { type: 'separator' },
       { label: status, enabled: false },
+      { label: inbox?.message || 'Powiadomienia EZD: wyłączone', enabled: false },
+      { label: 'Otwórz EZD w iBridge', click: onOpenInbox },
       ...sessions.map(session => ({
         label: `Zakończ edycję: ${String(session.name).slice(0, 80)}`,
         click: () => onFinish(session.id),
@@ -49,6 +53,7 @@ function createTrayController({
 
   return {
     tray,
+    updateInbox(state) { inbox = state; rebuildMenu() },
     updateStatus(nextStatus) {
       status = String(nextStatus || 'Praca w tle aktywna')
       rebuildMenu()

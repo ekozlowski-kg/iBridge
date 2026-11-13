@@ -1,4 +1,12 @@
-# EZD – iBridge 0.6.1
+# EZD – iBridge 0.6.2 — wersja testowa
+
+## Powiadomienia w samym iBridge
+
+W Ustawieniach otwórz „Zaloguj do EZD”, zaloguj się w oknie iBridge i włącz powiadomienia. Aplikacja sprawdza folder Nowe oraz istniejący strumień powiadomień EZD co 60 sekund. Po zamknięciu okna iBridge pozostaje w pasku menu. Brave ani inna zewnętrzna przeglądarka nie są potrzebne.
+
+Pierwszy kompletny odczyt tworzy cichy stan początkowy. Kolejne odczyty porównują identyfikatory koszulek i daty przekazania oraz identyfikatory zdarzeń. Konto, zastępstwo, jednostka i stanowisko są rozdzielane; zmiana kontekstu wymaga wybrania „Użyj bieżącego konta”. Alerty nie otwierają automatycznie pism ani nie odrzucają powiadomień w EZD. Sesja w osobnej partycji aplikacji nie jest kopiowana z przeglądarki. Po wygaśnięciu sesji trzeba ponownie zalogować się do EZD w iBridge.
+
+Kontrakt odczytu ustalono na podstawie `foldery.controller.js`, szablonu `FolderPism.aspx` i `powiadomienia.controllers.js` z instalacji KG PSP 3.136.31.31. Nie jest to obietnica zgodności z innymi wersjami EZD. Testy automatyczne korzystają z odpowiedzi syntetycznych. Odbiór działania po zalogowaniu do rzeczywistego serwera pozostaje do wykonania; szczegóły: `docs/POWIADOMIENIA.txt`.
 
 Aplikacja macOS do edycji i automatycznej synchronizacji dokumentów EZD PUW.
 Okno statusu ma **340 × 360 px**. Szczegóły, sprawy i historia otwierają większy
@@ -33,7 +41,7 @@ adres usługi i odpowiednio ograniczone uprawnienia od administratora.
 
 Interfejs jawnie oznacza ten brak. Lista „Otwierane z EZD w iBridge” to historia
 dokumentów rzeczywiście otrzymanych z EZD, a nie pełna lista konta. Przycisk
-konta otwiera serwer EZD w przeglądarce. Nie pobieramy haseł ani cookies
+konta otwiera serwer EZD w osobnym oknie iBridge. Nie pobieramy haseł ani cookies
 przeglądarki i nie udajemy pełnej listy na podstawie lokalnych plików.
 
 ## Uruchomienie i testy źródeł
@@ -52,7 +60,18 @@ dokumentu testowego; nie jest zastąpiona testami jednostkowymi.
 
 ## Paczka macOS Apple Silicon
 
-Paczka 0.6.1 jest tworzona z przeanalizowanego runtime 0.6.0. Potrzebny jest
+Testową paczkę 0.6.2 można przygotować z lokalnie zainstalowanego iBridge 0.6.1:
+
+```sh
+python3 scripts/package-local-inbox.py \
+  --runtime '/Applications/EZD - iBridge.app' \
+  --output ./artifacts
+```
+
+Skrypt tworzy osobny ZIP, zachowuje istniejący runtime i moduł podpisu,
+podpisuje kopię ad-hoc oraz weryfikuje `codesign --verify --deep --strict`.
+Nie zmienia zainstalowanego egzemplarza. Oryginalna ścieżka pakowania pozostaje
+dostępna: paczka 0.6.1 była tworzona z przeanalizowanego runtime 0.6.0. Potrzebny jest
 oryginalny ZIP o SHA-256:
 
 ```
@@ -72,7 +91,7 @@ oraz Helperów, dodaje opis Automatyzacji, podpisuje ad-hoc i wykonuje
 
 Moduł Java/PKCS#11 i jego runtime pozostają binarnie niezmienione z 0.6.0.
 Dostarczony materiał nie zawiera ich źródeł Java; repozytorium nie deklaruje
-pełnej przebudowy tego modułu. Nowe zmiany dotyczą edycji i synchronizacji.
+pełnej przebudowy tego modułu. Zmiany 0.6.2 dodają monitorowanie folderu i powiadomień.
 
 **Wydanie testowe nie ma Apple Developer ID ani notaryzacji.** Gotowe binaria
 nie są publikowane automatycznie przez CI. Nie ma automatycznej instalacji

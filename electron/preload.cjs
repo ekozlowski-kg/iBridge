@@ -8,6 +8,12 @@ function subscribe(channel, callback) {
 
 contextBridge.exposeInMainWorld('mostEzd', {
   getState: () => ipcRenderer.invoke('state:get'),
+  getInbox: () => ipcRenderer.invoke('inbox:get'),
+  setInboxEnabled: enabled => ipcRenderer.invoke('inbox:enabled', enabled),
+  checkInbox: () => ipcRenderer.invoke('inbox:check'),
+  rebindInbox: () => ipcRenderer.invoke('inbox:rebind'),
+  loginInbox: () => ipcRenderer.invoke('inbox:login'),
+  onInboxChanged: callback => subscribe('inbox-changed', callback),
   setWindowMode: mode => ipcRenderer.invoke('window:mode', mode),
   getUpdates: () => ipcRenderer.invoke('updates:get'),
   checkUpdates: () => ipcRenderer.invoke('updates:check'),
